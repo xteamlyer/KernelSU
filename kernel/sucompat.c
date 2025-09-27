@@ -162,12 +162,6 @@ int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr,
 
 	return ksu_sucompat_kernel_common((void *)(*filename_ptr)->name, "do_execveat_common", true);
 }
-
-int ksu_handle_execveat(int *fd, struct filename **filename_ptr, void *argv,
-			void *envp, int *flags)
-{
-	return ksu_handle_execveat_sucompat(fd, filename_ptr, argv, envp, flags);
-}
 #else
 // for do_execve_common on < 3.14
 // take note: char **filename
@@ -194,7 +188,7 @@ int ksu_getname_flags_kernel(char **kname, int flags)
 }
 
 #ifdef CONFIG_KPROBES
-
+#if 0
 static int faccessat_handler_pre(struct kprobe *p, struct pt_regs *regs)
 {
 	struct pt_regs *real_regs = PT_REAL_REGS(regs);
@@ -226,56 +220,86 @@ static int execve_handler_pre(struct kprobe *p, struct pt_regs *regs)
 	return ksu_handle_execve_sucompat(AT_FDCWD, filename_user, NULL, NULL,
 					  NULL);
 }
+#endif
 
-static struct kprobe *init_kprobe(const char *name,
-				  kprobe_pre_handler_t handler)
+static DEFINE_MUTEX(ksu_rp_sucompat_lock);
+static struct kretprobe *getname_rp;
+
+static int getname_flags_ret_handler(struct kretprobe_instance *ri, struct pt_regs *regs)
 {
-	struct kprobe *kp = kzalloc(sizeof(struct kprobe), GFP_KERNEL);
-	if (!kp)
-		return NULL;
-	kp->symbol_name = name;
-	kp->pre_handler = handler;
+	int *flags = (int *)ri->data;
 
-	int ret = register_kprobe(kp);
-	pr_info("sucompat: register_%s kprobe: %d\n", name, ret);
+	struct filename *ret = (struct filename *)PT_REGS_RC(regs);
+	if (IS_ERR(ret) || !ret || !ret->name)
+		return 0;
+
+	ksu_getname_flags_kernel((char **)&ret->name, *flags);
+	return 0;
+}
+
+static int getname_flags_entry_handler(struct kretprobe_instance *ri, struct pt_regs *regs)
+{
+	int *flags = (int *)ri->data; // as per sample, we store everything on ri->data ?
+	*flags = (int)PT_REGS_PARM2(regs); // keep a copy of arg2
+
+	return 0;
+}
+
+static struct kretprobe *init_kretprobe(const char *symbol,
+					kretprobe_handler_t entry_handler,
+					kretprobe_handler_t ret_handler,
+					size_t data_size,
+					int maxactive)
+{
+	struct kretprobe *rp = kzalloc(sizeof(struct kretprobe), GFP_KERNEL);
+	if (!rp)
+		return NULL;
+
+	rp->kp.symbol_name = symbol;
+	rp->entry_handler = entry_handler;
+	rp->handler = ret_handler;
+	rp->data_size = data_size;
+	rp->maxactive = maxactive;
+
+	mutex_lock(&ksu_rp_sucompat_lock);
+	int ret = register_kretprobe(rp);
+	mutex_unlock(&ksu_rp_sucompat_lock);
 	if (ret) {
-		kfree(kp);
+		kfree(rp);
 		return NULL;
 	}
+	pr_info("rp_sucompat: planted kretprobe at %s: %p\n", rp->kp.symbol_name, rp->kp.addr);
 
-	return kp;
+	return rp;
 }
 
-static void destroy_kprobe(struct kprobe **kp_ptr)
+static void destroy_kretprobe(struct kretprobe **rp_ptr)
 {
-	struct kprobe *kp = *kp_ptr;
-	if (!kp)
+	if (!rp_ptr || !*rp_ptr)
 		return;
-	unregister_kprobe(kp);
-	synchronize_rcu();
-	kfree(kp);
-	*kp_ptr = NULL;
-}
 
-static struct kprobe *su_kps[3];
+	mutex_lock(&ksu_rp_sucompat_lock);
+	unregister_kretprobe(*rp_ptr);
+	mutex_unlock(&ksu_rp_sucompat_lock);
+	kfree(*rp_ptr);
+	*rp_ptr = NULL;
+}
 #endif
 
 // sucompat: permited process can execute 'su' to gain root access.
 void ksu_sucompat_init()
 {
 #ifdef CONFIG_KPROBES
-	su_kps[0] = init_kprobe(SYS_EXECVE_SYMBOL, execve_handler_pre);
-	su_kps[1] = init_kprobe(SYS_FACCESSAT_SYMBOL, faccessat_handler_pre);
-	su_kps[2] = init_kprobe(SYS_NEWFSTATAT_SYMBOL, newfstatat_handler_pre);
+	pr_info("%s: register getname_flags!\n", __func__);
+	getname_rp = init_kretprobe("getname_flags", getname_flags_entry_handler,
+			getname_flags_ret_handler, sizeof(int), 20);
 #endif
 }
 
 void ksu_sucompat_exit()
 {
 #ifdef CONFIG_KPROBES
-	int i;
-	for (i = 0; i < ARRAY_SIZE(su_kps); i++) {
-		destroy_kprobe(&su_kps[i]);
-	}
+	pr_info("rp_sucompat: unregister getname_flags!\n");
+	destroy_kretprobe(&getname_rp);
 #endif
 }
