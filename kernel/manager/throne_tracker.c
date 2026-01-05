@@ -62,6 +62,11 @@ static bool maybe_manager_apk_dir(const char *path)
 		return false;
 	}
 
+	// kowsu support
+	constexpr char kow_pkg[] = "com.kowx712.supermanager";
+	if (!strncmp(pkg, kow_pkg, sizeof(kow_pkg)))
+		return true;
+
 	// pkg is `<real package>`
 	return strncmp(pkg, KSU_PACKAGE_NAME, sizeof(KSU_PACKAGE_NAME)) == 0;
 }
@@ -296,7 +301,8 @@ static void throne_tracker_fn(bool prune_only)
 	uid_t manager_package_uid = KSU_INVALID_APPID;
 	bool need_rescan = false;
 	list_for_each_entry (np, &uid_list, list) {
-		if (strcmp(np->package, KSU_PACKAGE_NAME) == 0) {
+		constexpr char kow_pkg[] = "com.kowx712.supermanager";
+		if (!strcmp(np->package, kow_pkg) || strcmp(np->package, KSU_PACKAGE_NAME) == 0) {
 			manager_package_uid = np->uid;
 			break;
 		}
