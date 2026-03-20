@@ -2,29 +2,6 @@ extern int path_mount(const char *dev_name, struct path *path,
 					  const char *type_page, unsigned long flags,
 					  void *data_page);
 
-#if defined(__aarch64__)
-extern long __arm64_sys_setns(const struct pt_regs *regs);
-#elif defined(__x86_64__)
-extern long __x64_sys_setns(const struct pt_regs *regs);
-#endif
-
-static long ksu_sys_setns(int fd, int flags)
-{
-	struct pt_regs regs;
-	memset(&regs, 0, sizeof(regs));
-
-	PT_REGS_PARM1(&regs) = fd;
-	PT_REGS_PARM2(&regs) = flags;
-
-#if defined(__aarch64__)
-	return __arm64_sys_setns(&regs);
-#elif defined(__x86_64__)
-	return __x64_sys_setns(&regs);
-#else
-#error "Unsupported arch"
-#endif
-}
-
 // global mode , need CAP_SYS_ADMIN and CAP_SYS_CHROOT to perform setns
 static void ksu_mnt_ns_global(void)
 {
@@ -51,6 +28,7 @@ static void ksu_mnt_ns_global(void)
 		pwd_path = NULL;
 	}
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0)
 try_setns:
 
 	rcu_read_lock();
@@ -76,6 +54,24 @@ try_setns:
 		pr_warn("failed get path for init mount namespace: %ld\n", ret);
 		goto out;
 	}
+#else
+try_setns:;
+	// on UL kernels we can try to just feed it with struct path of /proc/1/ns/mnt
+	// we do NOT have ns_get_path. if it works, GOOD. if it doesn't I don't care.
+	struct path ns_path;
+	const struct cred *saved = override_creds(ksu_cred);
+
+	// make sure to LOOKUP_FOLLOW
+	// /proc/1/ns/mnt -> 'mnt:[505034]'
+	long ret = kern_path("/proc/1/ns/mnt", LOOKUP_FOLLOW, &ns_path);
+	if (ret) {
+		revert_creds(saved);
+		pr_warn("kern_path /proc/1/ns/mnt fail! ret: %d\n", ret);
+		goto out;
+	}
+	revert_creds(saved);
+#endif
+
 	struct file *ns_file = dentry_open(&ns_path, O_RDONLY, ksu_cred);
 
 	path_put(&ns_path);
