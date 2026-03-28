@@ -209,7 +209,7 @@ pub fn install(magiskboot: Option<PathBuf>) -> Result<()> {
     Ok(())
 }
 
-pub fn uninstall(magiskboot_path: Option<PathBuf>) -> Result<()> {
+pub fn uninstall(magiskboot_path: Option<PathBuf>, package_name: &str) -> Result<()> {
     if Path::new(defs::MODULE_DIR).exists() {
         println!("- Uninstall modules..");
         module::uninstall_all_modules()?;
@@ -229,11 +229,19 @@ pub fn uninstall(magiskboot_path: Option<PathBuf>) -> Result<()> {
     })?;
     println!("- Uninstall KernelSU manager..");
     Command::new("pm")
-        .args(["uninstall", "me.weishu.kernelsu"])
+        .args(["uninstall", package_name])
         .spawn()?;
     println!("- Rebooting in 5 seconds..");
     std::thread::sleep(std::time::Duration::from_secs(5));
     Command::new("reboot").spawn()?;
+    Ok(())
+}
+
+pub fn reset_std() -> Result<()> {
+    let null_fd = open("/dev/null", OFlags::RDWR, Mode::empty())?;
+    dup2_stdin(&null_fd)?;
+    dup2_stdout(&null_fd)?;
+    dup2_stderr(&null_fd)?;
     Ok(())
 }
 
@@ -259,12 +267,7 @@ pub fn daemonize<F: FnOnce() -> Result<()>>(configure: F) -> Result<()> {
     setpgid(None, None)?;
     switch_cgroups();
     configure()?;
-    {
-        let null_fd = open("/dev/null", OFlags::RDWR, Mode::empty())?;
-        dup2_stdin(&null_fd)?;
-        dup2_stdout(&null_fd)?;
-        dup2_stderr(&null_fd)?;
-    }
+    reset_std()?;
 
     unsafe {
         let pid = libc::fork();
