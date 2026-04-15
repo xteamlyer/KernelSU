@@ -33,16 +33,16 @@ def load_jsonc(path: Path) -> dict:
 def merge_config(file_cfg: dict, args: argparse.Namespace) -> dict:
     cfg = {
         "signing": {
-            "keystore_path": "",
-            "key_alias": "",
-            "keystore_pass": "",
-            "key_pass": "",
+            "keystore_path": "dummy.keystore",
+            "key_alias": "alias",
+            "keystore_pass": "password",
+            "key_pass": "password",
         },
-        "app_build_type": "debug",
-        "ksud_build_type": "debug",
-        "arch": [],
+        "app_build_type": "release",
+        "ksud_build_type": "release",
+        "arch": ["arm64-v8a"],
         "output_name": "",
-        "strip": False,
+        "strip": True,
     }
 
     cfg.update({k: v for k, v in file_cfg.items() if k != "signing"})
