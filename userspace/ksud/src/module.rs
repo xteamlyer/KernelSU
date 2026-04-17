@@ -168,6 +168,16 @@ pub fn load_sepolicy_rule() -> Result<()> {
     Ok(())
 }
 
+fn get_script_tag(module_id: Option<&String>, path: &Path) -> String {
+    module_id.cloned().unwrap_or_else(|| {
+        format!(
+            "script:{}",
+            path.file_name()
+                .map_or_else(|| "unknown".to_owned(), |l| l.to_string_lossy().to_string())
+        )
+    })
+}
+
 pub fn exec_script<T: AsRef<Path>>(path: T, wait: bool) -> Result<()> {
     info!("exec {}", path.as_ref().display());
 
@@ -208,19 +218,21 @@ pub fn exec_script<T: AsRef<Path>>(path: T, wait: bool) -> Result<()> {
         );
     }
 
-    let mut command = &mut Command::new(assets::BUSYBOX_PATH);
-    #[cfg(unix)]
-    {
-        command = unsafe {
-            command.pre_exec(|| {
-                detach_process_group(true);
-                // ignore the error?
-                switch_cgroups();
-                Ok(())
-            })
-        };
-    }
-    command = command
+    let tag = get_script_tag(module_id.as_ref(), path.as_ref());
+
+    let mut command = Command::new(assets::BUSYBOX_PATH);
+    unsafe {
+        command.pre_exec(move || {
+            if let Err(e) = ksucalls::set_module_tag(tag.as_str()) {
+                log::warn!("failed to set process tag {tag}: {e:?}");
+            }
+            detach_process_group(true);
+            // ignore the error?
+            switch_cgroups();
+            Ok(())
+        })
+    };
+    command
         .current_dir(path.as_ref().parent().unwrap())
         .arg("sh")
         .arg(path.as_ref())
@@ -228,7 +240,7 @@ pub fn exec_script<T: AsRef<Path>>(path: T, wait: bool) -> Result<()> {
 
     // Set KSU_MODULE environment variable if module_id was validated successfully
     if let Some(id) = validated_module_id {
-        command = command.env("KSU_MODULE", id);
+        command.env("KSU_MODULE", id);
     }
 
     let result = if wait {
@@ -244,9 +256,7 @@ pub fn exec_stage_script(stage: &str, block: bool) -> Result<()> {
 
     foreach_active_module(|module| {
         if metamodule_dir.as_ref().is_some_and(|meta_dir| {
-            canonicalize(module)
-                .map(|resolved| resolved == *meta_dir)
-                .unwrap_or(false)
+            canonicalize(module).is_ok_and(|resolved| resolved == *meta_dir)
         }) {
             return Ok(());
         }
@@ -312,9 +322,8 @@ pub fn prune_modules() -> Result<()> {
         let module_id = module.file_name().and_then(|n| n.to_str()).unwrap_or("");
 
         // Check if this is a metamodule
-        let is_metamodule = read_module_prop(module)
-            .map(|props| metamodule::is_metamodule(&props))
-            .unwrap_or(false);
+        let is_metamodule =
+            read_module_prop(module).is_ok_and(|props| metamodule::is_metamodule(&props));
 
         if is_metamodule {
             info!("Removing metamodule symlink");
@@ -322,7 +331,7 @@ pub fn prune_modules() -> Result<()> {
                 warn!("Failed to remove metamodule symlink: {e}");
             }
         } else if let Err(e) = metamodule::exec_metauninstall_script(module_id) {
-            warn!("Failed to exec metamodule uninstall for {module_id}: {e}",);
+            warn!("Failed to exec metamodule uninstall for {module_id}: {e}");
         }
 
         // Then execute module's own uninstall.sh

@@ -12,11 +12,11 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::Duration;
 
+use crate::ksu_uapi::ProcessTag;
 use crate::{defs, ksucalls, module_config, utils};
 
 const KSU_EVENT_QUEUE_TYPE_DROPPED: u16 = u16::MAX;
 const KSU_EVENT_RECORD_FLAG_INTERNAL: u16 = 1;
-const TASK_COMM_LEN: usize = 16;
 const READ_BUF_SIZE: usize = 8192;
 const SULOGD_RESTART_DELAY: Duration = Duration::from_secs(3);
 const SULOG_DIR_MODE: u32 = 0o700;
@@ -45,21 +45,7 @@ struct DroppedInfo {
     last_seq: u64,
 }
 
-#[repr(C, packed)]
-#[derive(Clone, Copy, Debug)]
-struct SulogEventHeader {
-    version: u16,
-    event_type: u16,
-    retval: i32,
-    pid: u32,
-    tgid: u32,
-    ppid: u32,
-    uid: u32,
-    euid: u32,
-    comm: [u8; TASK_COMM_LEN],
-    filename_len: u32,
-    argv_len: u32,
-}
+type SulogEventHeader = crate::ksu_uapi::ksu_sulog_event;
 
 #[derive(Clone, Debug)]
 struct SulogEvent {
@@ -74,6 +60,7 @@ struct SulogEvent {
     comm: String,
     file: String,
     argv: String,
+    process_tag: ProcessTag,
 }
 
 enum ReadState {
@@ -132,6 +119,7 @@ impl SulogEvent {
         let parent_process_id = header.ppid;
         let uid = header.uid;
         let euid = header.euid;
+        let process_tag_name = parse_c_string(&header.process_tag_name);
 
         let variable_len = filename_len
             .checked_add(argv_len)
@@ -161,6 +149,10 @@ impl SulogEvent {
             comm,
             file,
             argv,
+            process_tag: ProcessTag {
+                tag_type: header.process_tag_type,
+                name: process_tag_name,
+            },
         })
     }
 
@@ -430,11 +422,11 @@ fn open_log_writer_for_day(day: &str, max_file_size: u64) -> Result<(u32, u64, L
 
     let mut index = if found { highest_index } else { 0 };
     let mut path = daily_log_path(day, index);
-    let mut current_size = fs::metadata(&path).map(|meta| meta.len()).unwrap_or(0);
+    let mut current_size = fs::metadata(&path).map_or(0, |meta| meta.len());
     if current_size >= max_file_size && current_size > 0 {
         index = index.saturating_add(1);
         path = daily_log_path(day, index);
-        current_size = fs::metadata(&path).map(|meta| meta.len()).unwrap_or(0);
+        current_size = fs::metadata(&path).map_or(0, |meta| meta.len());
     }
 
     let writer = open_line_writer(&path)?;
@@ -497,7 +489,7 @@ fn format_event_line(header: &EventRecordHeader, event: &SulogEvent) -> String {
     let uid = event.uid;
     let euid = event.euid;
     format!(
-        "ts_ns={} seq={} type={} version={} retval={} pid={} tgid={} ppid={} uid={} euid={} comm=\"{}\" file=\"{}\" argv=\"{}\"",
+        "ts_ns={} seq={} type={} version={} retval={} pid={} tgid={} ppid={} uid={} euid={} comm=\"{}\" file=\"{}\" argv=\"{}\" tag_type=\"{}\" tag_name=\"{}\"",
         ts_ns,
         seq,
         event.event_name(),
@@ -511,6 +503,8 @@ fn format_event_line(header: &EventRecordHeader, event: &SulogEvent) -> String {
         escape_field(&event.comm),
         escape_field(&event.file),
         escape_field(&event.argv),
+        event.process_tag.tag_type,
+        escape_field(&event.process_tag.name),
     )
 }
 
