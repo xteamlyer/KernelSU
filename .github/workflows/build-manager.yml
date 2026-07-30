@@ -2,38 +2,7 @@ name: Build Manager
 
 on:
   push:
-    branches: [ "main", "dev", "ci", "master" ]
-    paths:
-      - 'README.md'
-      - '.github/workflows/build-manager.yml'
-      - '.github/workflows/build-lkm.yml'
-      - '.github/workflows/ddk-lkm.yml'
-      - '.github/workflows/ksud.yml'
-      - '.github/workflows/ksud-extra.yml'
-      - '.github/scripts/setup-rust-build.sh'
-      - 'repack_apk.py'
-      - 'manager/**'
-      - 'kernel/**'
-      - 'userspace/**'
-      - 'Cargo.lock'
-      - 'Cargo.toml'
-      - 'scripts/ksubot.py'
   pull_request:
-    branches: [ "main", "dev" ]
-    paths:
-      - '.github/workflows/build-manager.yml'
-      - '.github/workflows/build-lkm.yml'
-      - '.github/workflows/ddk-lkm.yml'
-      - '.github/workflows/ksud.yml'
-      - '.github/workflows/ksud-extra.yml'
-      - '.github/scripts/setup-rust-build.sh'
-      - 'repack_apk.py'
-      - 'manager/**'
-      - 'kernel/**'
-      - 'userspace/**'
-      - 'Cargo.lock'
-      - 'Cargo.toml'
-      - 'scripts/ksubot.py'
   workflow_call:
   workflow_dispatch:
 
@@ -161,6 +130,11 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+
+      # - name: Spoof Package ID
+      #   run: |
+      #     chmod +x spoof
+      #     ./spoof
 
       - name: Write key
         if: ${{ github.event_name != 'pull_request' || github.ref_type == 'tag' }}
