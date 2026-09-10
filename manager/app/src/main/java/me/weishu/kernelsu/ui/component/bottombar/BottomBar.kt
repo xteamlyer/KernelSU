@@ -28,12 +28,15 @@ class MainPagerState(
     val pagerState: PagerState,
     private val coroutineScope: CoroutineScope,
     private val animatePageChanges: Boolean,
+    initialPage: Int = pagerState.currentPage,
 ) {
-    var selectedPage by mutableIntStateOf(pagerState.currentPage)
+    var selectedPage by mutableIntStateOf(initialPage)
         private set
 
     var isNavigating by mutableStateOf(false)
         private set
+
+    var usePager by mutableStateOf(true)
 
     private var navJob: Job? = null
 
@@ -43,6 +46,9 @@ class MainPagerState(
         navJob?.cancel()
 
         selectedPage = targetIndex
+
+        if (!usePager) return
+
         isNavigating = true
 
         navJob = coroutineScope.launch {
@@ -65,6 +71,7 @@ class MainPagerState(
     }
 
     fun syncPage() {
+        if (!usePager) return
         if (!isNavigating && selectedPage != pagerState.currentPage) {
             selectedPage = pagerState.currentPage
         }
@@ -121,9 +128,10 @@ fun rememberMainPagerState(
     pagerState: PagerState,
     coroutineScope: CoroutineScope = rememberCoroutineScope(),
     animatePageChanges: Boolean = true,
+    initialPage: Int = pagerState.currentPage,
 ): MainPagerState {
     return remember(pagerState, coroutineScope, animatePageChanges) {
-        MainPagerState(pagerState, coroutineScope, animatePageChanges)
+        MainPagerState(pagerState, coroutineScope, animatePageChanges, initialPage)
     }
 }
 
