@@ -90,7 +90,6 @@ fun SearchAppBar(
         shouldClearOnCollapse = false
         clearSearchText()
         scope.launch { searchBarState.animateToCollapsed() }
-        focusManager.clearFocus()
         keyboardController?.hide()
     }
 
@@ -118,6 +117,16 @@ fun SearchAppBar(
     }
 
     LaunchedEffect(searchBarState) {
+        snapshotFlow { searchBarState.targetValue }
+            .distinctUntilChanged()
+            .collect { value ->
+                if (value == SearchBarValue.Collapsed) {
+                    keyboardController?.hide()
+                }
+            }
+    }
+
+    LaunchedEffect(searchBarState) {
         snapshotFlow { searchBarState.currentValue }
             .distinctUntilChanged()
             .collect { value ->
@@ -129,8 +138,6 @@ fun SearchAppBar(
                         clearSearchText()
                     }
                     shouldClearOnCollapse = true
-                    focusManager.clearFocus()
-                    keyboardController?.hide()
                 }
             }
     }
@@ -141,9 +148,14 @@ fun SearchAppBar(
         }
     }
 
+    val isSearchBarCollapsing =
+        searchBarState.currentValue != SearchBarValue.Collapsed &&
+            searchBarState.targetValue == SearchBarValue.Collapsed
+
     val inputField: @Composable () -> Unit = {
         CompositionLocalProvider(LocalDensity provides scaledDensity) {
             SearchBarDefaults.InputField(
+                enabled = !isSearchBarCollapsing,
                 textFieldState = textFieldState,
                 searchBarState = searchBarState,
                 onSearch = {
