@@ -1,10 +1,13 @@
 #ifndef __KSU_H_UTIL
 #define __KSU_H_UTIL
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0) // ksyscall start
 #if defined(__aarch64__)
 #define KSU_SYS_PREFIX(name) __arm64_sys_##name
 #elif defined(__x86_64__)
 #define KSU_SYS_PREFIX(name) __x64_sys_##name
+#elif defined(__arm__)
+#define KSU_SYS_PREFIX(name) sys_##name
 #else // wire up your arch here.
 static_assert(1 == 0, "Unsupported architecture!");
 #define KSU_SYS_PREFIX(name) sys_##name
@@ -45,6 +48,16 @@ static_assert(1 == 0, "Unsupported architecture!");
 
 #define ksu_close_fd(fd) ({ ksyscall(close, fd); })
 #define ksu_sys_setns(fd, flags) ({ ksyscall(setns, fd, flags); })
+static __always_inline int ksu_sys_umount(char __user *name, int flags) { return (int)ksyscall(umount, name, flags); }
+
+#else /* < 4.19 */ // ksyscall end
+
+#define ksu_close_fd sys_close
+#define ksu_sys_setns sys_setns
+#define ksys_unshare sys_unshare
+static __always_inline int ksu_sys_umount(char __user *name, int flags) { return (int)sys_umount(name, flags); }
+
+#endif /* < 4.19 */
 
 static inline struct file *ksu_filp_open_nonotify(const char *path, int flags)
 {
