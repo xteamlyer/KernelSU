@@ -92,10 +92,6 @@ static_assert(1 == 0, "Unsupported architecture!");
 #define ksu_close_fd(fd) ({ ksyscall(close, fd); })
 #define ksu_sys_setns(fd, flags) ({ ksyscall(setns, fd, flags); })
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 19, 0)
-#define ksys_unshare(flags) ({ ksyscall(unshare, flags); })
-#endif
-
 static inline struct file *ksu_filp_open_nonotify(const char *path, int flags)
 {
 	struct path p;
