@@ -351,9 +351,8 @@ static ssize_t ksu_strscpy(char *dest, const char *src, size_t count)
 	if (!end)
 		goto no_null_term;
 
-	size_t copy_len = end - src;
+	size_t copy_len = end - src + 1; // +1 to copy \0
 	__builtin_memcpy(dest, src, copy_len);
-	dest[copy_len] = '\0';
 	return copy_len;
 
 no_null_term:
