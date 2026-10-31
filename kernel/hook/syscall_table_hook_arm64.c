@@ -331,11 +331,38 @@ asmlinkage long hook_armeabi_read(unsigned int fd, char __user *buf, size_t coun
 
 #endif // SYSCALL HANDLERS
 
+// more than enough for now
+#define sct_slots 512
+
 static void *native_sct = (void *)sys_call_table;
+static uintptr_t sys_call_table_mirror[sct_slots] __aligned(4096);
 
 #if defined(CONFIG_COMPAT)
 static void *compat_sct = (void *)compat_sys_call_table;
+static uintptr_t compat_sys_call_table_mirror[sct_slots] __aligned(4096);
 #endif
+
+static void print_sct(void)
+{
+	copy_from_kernel_nofault((void *)sys_call_table_mirror, native_sct, 4096);
+	uintptr_t *t = (uintptr_t *)native_sct;
+	for (unsigned int i = 0; i < sct_slots; i++)
+		pr_info("sys_call_table: entry: %u: 0x%lx\n", i, t[i]);
+
+	t = (uintptr_t *)sys_call_table_mirror;
+	for (unsigned int i = 0; i < sct_slots; i++)
+		pr_info("sys_call_table: entry: %u: 0x%lx\n", i, t[i]);
+
+
+#if 0  // defined(CONFIG_COMPAT)
+	copy_from_kernel_nofault((void *)compat_sys_call_table_mirror, native_sct, 4096);
+	t = (uintptr_t *)compat_sct;
+	for (unsigned int i = 0; i < sct_slots; i++)
+		pr_info("compat_sys_call_table: entry: %u: 0x%lx\n", i, t[i]);
+
+#endif
+}
+
 
 static int ksu_syscall_table_restore(void *data)
 {
@@ -402,6 +429,8 @@ static void syscall_table_sucompat_disable()
 
 static void syscall_table_ksud_hook_init()
 {
+	print_sct();
+
 	read_and_replace_syscall((void *)&aarch64_reboot, __AARCH64_reboot, (void *)hook_aarch64_reboot, native_sct);
 	read_and_replace_syscall((void *)&aarch64_newfstat, __AARCH64_newfstat, (void *)hook_aarch64_newfstat_ret, native_sct);
 	read_and_replace_syscall((void *)&aarch64_read, __AARCH64_read, (void *)hook_aarch64_read, native_sct);
