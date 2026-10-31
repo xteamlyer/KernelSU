@@ -344,13 +344,8 @@ static uintptr_t compat_sys_call_table_mirror[sct_slots] __aligned(4096);
 
 static void print_sct(void)
 {
-#if 0
-	copy_from_kernel_nofault((void *)sys_call_table_mirror, native_sct, 4096);
-
-	uintptr_t *t = (uintptr_t *)sys_call_table_mirror;
-	for (unsigned int i = 0; i < sct_slots; i++)
-		pr_info("sys_call_table: entry: %u: 0x%lx\n", i, t[i]);
-#endif
+	if (!!copy_from_kernel_nofault((void *)sys_call_table_mirror, native_sct, 4096))
+		return;
 
 	uintptr_t el0_insn_addr = kallsyms_lookup_name("el0_svc");
 	if (!el0_insn_addr) {
@@ -359,7 +354,6 @@ static void print_sct(void)
 	}
 
 	// TODO: create a scanner for newer kernels
-
 	uint32_t raw_insn = 0;
 	copy_from_kernel_nofault((void *)&raw_insn, (void *)el0_insn_addr, sizeof(uint32_t));
 
@@ -370,12 +364,33 @@ static void print_sct(void)
 
 	pr_info("insn is adrp! .inst 0x%lx \n", raw_insn);
 
-	uintptr_t pc = el0_insn_addr;	// pc
-	u32 rd = raw_insn & 0x1f; 	// reg
+	uintptr_t pc = el0_insn_addr;			// pc
+	uintptr_t pc_pg = el0_insn_addr & ~0xFFFUL;	// target, align to 4096
 
-	// target, align to 4096
-	uintptr_t tgt = (pc & ~0xFFFUL) + (long)aarch64_insn_adrp_get_offset(raw_insn);
-	pr_info("el0_svc: reg: x%u tgt: 0x%lx sys_call_table: 0x%lx\n", rd, tgt, (uintptr_t)native_sct);
+	uintptr_t tgt = pc_pg + (long)aarch64_insn_adrp_get_offset(raw_insn);
+
+	pr_info("el0_svc: tgt: 0x%lx sys_call_table: 0x%lx\n", tgt, (uintptr_t)native_sct);
+	if (tgt != (uintptr_t)native_sct)
+		return;
+
+	int32_t offset = (int64_t)(uintptr_t)sys_call_table_mirror - (int64_t)pc_pg;
+
+	uint32_t new_insn = aarch64_insn_adrp_set_offset(raw_insn, offset);
+
+	pr_info("new_insn: .inst 0x%lx \n", new_insn);
+
+	void *arr_addr[] = { (void *)el0_insn_addr };
+	uint32_t arr_insn[] = { new_insn };
+	
+	int res = aarch64_insn_patch_text(arr_addr, arr_insn, 1);
+	pr_info("%s: patched el0_svc! ret: %d\n", __func__, res);
+
+	patch_ptr_slot_kick_cpu(&native_sct, (void *)sys_call_table_mirror);
+
+	// verify
+	copy_from_kernel_nofault((void *)&raw_insn, (void *)el0_insn_addr, sizeof(uint32_t));
+	pr_info("el0_svc .inst 0x%lx \n", raw_insn);
+
 	return;
 }
 
