@@ -342,6 +342,39 @@ static void *compat_sct = (void *)compat_sys_call_table;
 static uintptr_t compat_sys_call_table_mirror[sct_slots] __aligned(4096);
 #endif
 
+/**
+ * 4.14 and older: el0_svc, el0_svc_compat, first insn
+ * 4.19~5.4 el0_svc_handler, el0_svc_compat_handler, need insn scan
+
+ffffff80100a1074 <el0_svc_handler>:
+ffffff80100a1074: a9bf7bfd     	stp	x29, x30, [sp, #-0x10]!
+ffffff80100a1078: 910003fd     	mov	x29, sp
+ffffff80100a107c: 14000008     	b	0xffffff80100a109c <el0_svc_handler+0x28>
+ffffff80100a1080: d503201f     	nop
+ffffff80100a1084: b9404001     	ldr	w1, [x0, #0x40]
+ffffff80100a1088: b000b742     	adrp	x2, 0xffffff801178a000
+ffffff80100a108c: 910ca042     	add	x2, x2, #0x328
+ffffff80100a1090: 9400001a     	bl	0xffffff80100a10f8 <el0_svc_common>
+ffffff80100a1094: a8c17bfd     	ldp	x29, x30, [sp], #0x10
+ffffff80100a1098: d65f03c0     	ret
+
+ffffff80100a125c <el0_svc_compat_handler>:
+ffffff80100a125c: a9bf7bfd     	stp	x29, x30, [sp, #-0x10]!
+ffffff80100a1260: 910003fd     	mov	x29, sp
+ffffff80100a1264: b9403801     	ldr	w1, [x0, #0x38]
+ffffff80100a1268: d000b762     	adrp	x2, 0xffffff801178f000 
+ffffff80100a126c: 9112e042     	add	x2, x2, #0x4b8
+ffffff80100a1270: 97ffffa2     	bl	0xffffff80100a10f8 <el0_svc_common>
+ffffff80100a1274: a8c17bfd     	ldp	x29, x30, [sp], #0x10
+ffffff80100a1278: d65f03c0     	ret
+
+
+ * 5.10+, do_el0_svc, do_el0_svc_compat
+
+*/
+
+
+
 static void print_sct(void)
 {
 	if (!!copy_from_kernel_nofault((void *)sys_call_table_mirror, native_sct, 4096))
