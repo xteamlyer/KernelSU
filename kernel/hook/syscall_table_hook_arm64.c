@@ -373,9 +373,7 @@ ffffff80100a1278: d65f03c0     	ret
 
 */
 
-
-
-static void print_sct(void)
+static void try_mirror_syscall_table(void)
 {
 	if (!!copy_from_kernel_nofault((void *)sys_call_table_mirror, native_sct, 4096))
 		return;
@@ -492,7 +490,7 @@ static void syscall_table_sucompat_disable()
 
 static void syscall_table_ksud_hook_init()
 {
-	print_sct();
+	try_mirror_syscall_table();
 
 	read_and_replace_syscall((void *)&aarch64_reboot, __AARCH64_reboot, (void *)hook_aarch64_reboot, native_sct);
 	read_and_replace_syscall((void *)&aarch64_newfstat, __AARCH64_newfstat, (void *)hook_aarch64_newfstat_ret, native_sct);
