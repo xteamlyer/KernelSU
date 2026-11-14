@@ -46,6 +46,7 @@ import me.weishu.kernelsu.ui.util.rememberBlurBackdrop
 import top.yukonga.miuix.kmp.basic.FloatingActionButton
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTopAppBar
 import top.yukonga.miuix.kmp.basic.Text
@@ -103,15 +104,23 @@ fun FlashScreenMiuix(
                             end = 20.dp
                         )
                         .border(0.05.dp, colorScheme.outline.copy(alpha = 0.5f), CircleShape),
-                    onClick = { if (isRebootAction) actions.onReboot() else actions.onClose() },
+                    onClick = {
+                        if (!state.actionInProgress) {
+                            if (isRebootAction) actions.onReboot() else actions.onClose()
+                        }
+                    },
                     shadowElevation = 0.dp,
                     content = {
-                        Icon(
-                            if (isRebootAction) Icons.Rounded.Refresh else Icons.Rounded.Close,
-                            if (isRebootAction) stringResource(id = state.rebootLabelRes) else stringResource(id = R.string.close),
-                            Modifier.size(40.dp),
-                            tint = colorScheme.onPrimary
-                        )
+                        if (state.actionInProgress) {
+                            InfiniteProgressIndicator(color = colorScheme.onPrimary)
+                        } else {
+                            Icon(
+                                if (isRebootAction) Icons.Rounded.Refresh else Icons.Rounded.Close,
+                                if (isRebootAction) stringResource(id = state.rebootLabelRes) else stringResource(id = R.string.close),
+                                Modifier.size(40.dp),
+                                tint = colorScheme.onPrimary
+                            )
+                        }
                     },
                 )
             }
