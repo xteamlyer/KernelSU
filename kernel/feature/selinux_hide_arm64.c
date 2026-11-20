@@ -50,7 +50,7 @@ __attribute__((used)) struct page *sh_selinux_kernel_status_page(void)
 	if (unlikely(!ksu_fake_status_page))
 		goto orig_page;
 
-	pr_info("selinux_hide: sel_open_handle_status: served fake_page\n");
+	pr_info("selinux_hide: selinux_kernel_status_page: served fake_page\n");
 	return ksu_fake_status_page;
 
 orig_page:
