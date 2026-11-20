@@ -112,6 +112,7 @@ skip_destroy:;
 	return simple_transaction_get(file, buf, size);
 }
 
+#if 0
 static void sh_simple_transaction_set(struct file *file, size_t n)
 {
 	simple_transaction_set(file, n);
@@ -147,6 +148,34 @@ static void sh_simple_transaction_set(struct file *file, size_t n)
 	if (IS_ENABLED(CONFIG_KSU_DEBUG))
 		pr_info("ar->data: after: %s \n", ar->data);
 }
+#endif // 0
+
+static inline void sh_swap_seqno(struct av_decision *avd)
+{
+	if (unlikely(!ksu_selinux_hide_enabled))
+		return;
+	if (!ksu_is_seccomp_enabled())
+		return;
+	if (current_uid().val < 10000)
+		return;
+	if (!avd)
+		return;
+	avd->seqno = 1;
+}
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 4, 0) && defined(KSU_COMPAT_HAS_SELINUX_STATE)
+static void sh_security_compute_av_user(struct selinux_state *state, u32 ssid, u32 tsid, u16 tclass, struct av_decision *avd)
+{
+	security_compute_av_user(state, ssid, tsid, tclass, avd);
+	sh_swap_seqno(avd);
+}
+#else
+static void sh_security_compute_av_user(u32 ssid, u32 tsid, u16 tclass, struct av_decision *avd)
+{
+	security_compute_av_user(ssid, tsid, tclass, avd);
+	sh_swap_seqno(avd);
+}
+#endif
 
 static void patch_branches_selinux_transaction_write(void)
 {
@@ -166,6 +195,7 @@ static void patch_branches_selinux_transaction_write(void)
 	if (ret)
 		goto hook_classic;
 
+#if 0
 	symbol_addr = kallsyms_lookup_retry("simple_transaction_set");
 	ret = patch_arm64_branches_trampolined(target_callsite, symbol_addr, (uintptr_t)&sh_simple_transaction_set);
 	pr_info("selinux_hide: hook_site: selinux_transaction_write->simple_transaction_set ret: %d \n", ret);
@@ -197,6 +227,17 @@ static void patch_branches_selinux_transaction_write(void)
 	 * however lets be opportunistic here, we keep the code, maybe we can get lucky
 	 * so if second hook fails, we just gc the first one and fallback to fnptr
 	 */
+#else
+	target_callsite = kallsyms_lookup_retry("sel_write_access");
+	symbol_addr = kallsyms_lookup_retry("security_compute_av_user");
+	if (!symbol_addr || !target_callsite)
+		goto hook_classic;
+
+	ret = patch_arm64_branches_trampolined(target_callsite, symbol_addr, (uintptr_t)&sh_security_compute_av_user);
+	pr_info("selinux_hide: hook_site: sel_write_access->security_compute_av_user ret: %d \n", ret);
+	if (!ret)
+		return;
+#endif
 	symbol_addr = kallsyms_lookup_retry("simple_transaction_get");
 	assume(!!symbol_addr);
 	if (!!landing_pad1)
