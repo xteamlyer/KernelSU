@@ -316,24 +316,19 @@ static int kallsyms_on_each_symbol_cb(void *data, const char *name, struct modul
 	return 1;
 }
 
-static noinline __nocfi uintptr_t try_kallsyms_on_each_symbol(const char *name)
+static __nocfi uintptr_t try_kallsyms_on_each_symbol(const char *name)
 {
 #ifdef MODULE // lazy init
-	static typeof(kallsyms_on_each_symbol) *kallsyms_on_each_symbol_fn __read_mostly;
-	static void *state = &&bootstrap;
-	goto *state;
+	static typeof(kallsyms_on_each_symbol) *kallsyms_on_each_symbol_fn = nullptr;
+	static bool initialized = false;
 
-bootstrap:
-	*(void **)&kallsyms_on_each_symbol_fn = (void *)kallsyms_lookup_name("kallsyms_on_each_symbol");
-	if (!!kallsyms_on_each_symbol_fn)
-		state = &&fn_ok;
-	else
-		state = &&no_fn;
-	goto *state;
-no_fn:
-	return 0x0;
+	if (!initialized) {
+		kallsyms_on_each_symbol_fn = (void *)kallsyms_lookup_name("kallsyms_on_each_symbol");
+		initialized = true;
+	}
 
-fn_ok:;
+	if (!kallsyms_on_each_symbol_fn)
+		return 0x0;
 #else
 #define kallsyms_on_each_symbol_fn kallsyms_on_each_symbol
 #endif
@@ -361,6 +356,8 @@ static uintptr_t kp_kallsyms_lookup_name(const char *name)
 	pr_info("%s: success! %s at 0x%lx\n", __func__, name, addr);
 	return addr;
 }
+#else
+#define kp_kallsyms_lookup_name(name) ({ 0x0; })
 #endif
 
 // if called within kthread, will try to build a kallsyms hash array when everything failed!
@@ -373,11 +370,9 @@ static noinline uintptr_t kallsyms_lookup_retry(const char *name)
 	if (addr)
 		goto found;
 
-#ifdef CONFIG_KPROBES
 	addr = kp_kallsyms_lookup_name(name);
 	if (addr)
 		goto found;
-#endif
 
 	addr = try_kallsyms_on_each_symbol(name);
 	if (addr)
