@@ -20,8 +20,6 @@
 
 #include "kernel_includes.h"
 
-#define LSM_USES_BRANCH_LINK 1
-
 // selinux includes
 #include "avc_ss.h"
 #include "objsec.h"
