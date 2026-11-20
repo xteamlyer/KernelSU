@@ -248,7 +248,7 @@ increment:
 do {												\
 	pr_info("LSM: Initializing hook for %s -> %s\n", #hook_name, #hook_fn);			\
 	void *hook_head = (void *)&security_hook_heads.hook_name;				\
-	uintptr_t *old_ptr = (uintptr_t *)&hook_name##_fn;					\
+	uintptr_t *old_ptr = (uintptr_t *)&hook_name##_fn; /* storage, fnp */			\
 	int ret = ksu_hack_lsm_slot(hook_head, old_ptr, (uintptr_t)(hook_fn), #hook_name);	\
 	if (ret == 2)										\
 		ksu_bruteforce_lsm_slot(old_ptr, (uintptr_t)(hook_fn), #hook_name);		\
@@ -258,10 +258,12 @@ do {												\
 do {												\
 	if (!hook_name##_fn)									\
 		break;										\
-	uintptr_t dummy_int;									\
+	uintptr_t __dummy; /* dummy storage */							\
 	pr_info("LSM: Restoring original hook for %s\n", #hook_name);				\
 	void *hook_head = (void *)&security_hook_heads.hook_name;				\
-	ksu_hack_lsm_slot(hook_head, &dummy_int, (uintptr_t)hook_name##_fn, #hook_name);	\
+	int r = ksu_hack_lsm_slot(hook_head, &__dummy, (uintptr_t)hook_name##_fn, #hook_name);	\
+	if (r == 2)										\
+		ksu_bruteforce_lsm_slot(&__dummy, (uintptr_t)hook_name##_fn, #hook_name);	\
 } while (0)
 
 static int ksu_restore_file_permission(void *data)
