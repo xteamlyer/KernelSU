@@ -330,7 +330,13 @@ failure_xattr:
 
 static inline int patch_branch_context_to_sid_procattr(void)
 {
-	uintptr_t target_callsite = kallsyms_lookup_retry("selinux_setprocattr");
+	uintptr_t target_callsite = 0x0;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 8, 0)
+	if (!target_callsite) 
+		target_callsite = kallsyms_lookup_retry("selinux_lsm_setattr");
+#endif
+	if (!target_callsite)
+		target_callsite = kallsyms_lookup_retry("selinux_setprocattr");
 	uintptr_t symbol_addr = kallsyms_lookup_retry("security_context_to_sid_core");
 	if (!symbol_addr || !target_callsite)
 		goto noncore_procattr;
@@ -343,7 +349,12 @@ static inline int patch_branch_context_to_sid_procattr(void)
 	if (!ret)
 		goto success_procattr;
 noncore_procattr:;
-	target_callsite = kallsyms_lookup_retry("selinux_setprocattr");
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 8, 0)
+	if (!target_callsite)
+		target_callsite = kallsyms_lookup_retry("selinux_lsm_setattr");
+#endif
+	if (!target_callsite)
+		target_callsite = kallsyms_lookup_retry("selinux_setprocattr");
 	symbol_addr = kallsyms_lookup_retry("security_context_to_sid");
 	if (!symbol_addr || !target_callsite)
 		goto failure_procattr;
